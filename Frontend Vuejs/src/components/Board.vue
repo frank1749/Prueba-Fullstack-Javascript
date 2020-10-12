@@ -25,6 +25,10 @@ export default {
       var op = (row * max + index) - (max + 1);
       return op;
 
+    },
+
+    click (index, row) {
+      this.$emit('click', this.indexByRow(index, row));
     }
   }
 }

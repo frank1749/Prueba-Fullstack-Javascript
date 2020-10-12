@@ -7,16 +7,58 @@
 
       <div class="row">
 
-        <div class="col-md-12">
+        <div class="col-md-6">
+
+           <input v-model="name_game" id="inputName" type="text" placeholder="Nombre partida">
+           <button type="submit" @click="save_g(2)" class="btn btn-primary mb-2">
+              Guardar partida
+           </button>
+
+           <a href="#" @click="isOpen = !isOpen">Listado de juegos</a>
+
+          <div v-show="isOpen">
+            <div v-if="all_records.length > 0">
+
+              <a href="#" class="text-danger" @click="deleteGames($event)">Eliminar todas las partidas</a>
+
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Fecha</th>
+                    <th scope="col">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, index) in all_records" v-bind:key="index">
+                    <td>{{item.name}}</td>
+                    <td>{{item.date_time}}</td>
+                    <td>
+                      <span v-if="item.state == 0" class="text-warning">Empatado</span>
+                      <span v-if="item.state == 1" class="text-success">Terminado</span>
+                      <span v-if="item.state == 2" class="text-danger">Pausado</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else>
+              <p class="text-center">No tiene partidas guardadas</p>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="col-md-6">
 
             <div class="form-group row">
               <label class="col-md-4 col-form-label">Partidas guardadas</label>
               <div class="col-md-8">
                 <select class="form-control" @change="select_reg" v-model="item_select">
-                  <option value="">Seleccione partida...</option>
+                  <option value="">Seleccione partidas pausadas...</option>
                   <option 
                     v-for="(item, index) in saved_records" 
-                    v-bind:key="item"
+                    v-bind:key="index"
                     :id="'item_var'+item.id" 
                     :data-field="item.fields"
                     :data-name="item.name" 
@@ -68,26 +110,63 @@ export default {
   data () {
     return {
       won_games: 'http://localhost:5000/won-games',
+      all_games: 'http://localhost:5000/all-games',
+      create_game: 'http://localhost:5000/insert-game',
+      update_game: 'http://localhost:5000/update-game',
+      delete_game: 'http://localhost:5000/delete-game',
+      isOpen: false,
       saved_records: [],
+      all_records: [],
       item_select: '',
       squares: Array(9).fill(null),
       stepNumber: 0,
       currentPlayer: 'X',
       winner: null,
-      name_game: ''
+      name_game: '',
+      game_name_old: ''
     }
   },
   mounted () { 
-    this.getGames();
+    this.getWonGames();
+    this.getAllGames();
   },
   methods: {
-    getGames(){
+    getWonGames(){
       axios.get(this.won_games).then((result) => {
         this.saved_records = result.data.data;
       }).catch(error => {
           alert("No esta disponible el servidor.");
           console.log(error);
       });
+    },
+
+    getAllGames(){
+      axios.get(this.all_games).then((result) => {
+        //console.log('all games ',result);
+        this.all_records = result.data.data;
+      }).catch(error => {
+          alert("No esta disponible el servidor.");
+          console.log(error);
+      });
+    },
+
+    deleteGames(){
+      var conf = confirm("Desea eliminar todas las partidas guardadas?");
+      if(conf){
+        axios.post(this.delete_game).then((result) => {
+          if (result.data.success === true) {
+            alert("PARTIDA ELIMINADAS EXITOSAMENTE!!");
+            this.restart();
+            this.getWonGames();
+            this.getAllGames();
+          }else{
+            alert("ERROR DEL SERVICIO");
+          }
+        }).catch(error => {
+            alert("No esta disponible el servidor.");
+            console.log(error);
+        });
+      }
     },
 
     hasWinner() {
@@ -115,7 +194,9 @@ export default {
       this.stepNumber = 0
       this.currentPlayer = this.currentPlayer
       this.winner = null
+      this.item_select = ''
       this.name_game = ''
+      document.getElementById("inputName").focus();
     },
 
     click (i) {
@@ -129,12 +210,98 @@ export default {
       if (this.squares[i] || this.winner) return
       this.$set(this.squares, i, this.currentPlayer)
 
+      if(this.hasWinner() === true){
+        //Actualizo una partida almacenada
+        if (this.item_select !== '') {
+          this.update_g();
+        }else{
+          this.save_g(1);
+        }
+      }
+
       if (!this.hasWinner()) {
 
         this.stepNumber++
         this.currentPlayer = this.currentPlayer === 'X' ? 'O' : 'X'
+
+        if (this.stepNumber > 8) {
+          //Guardo la partida en estado 0 la cual es equivalente a empate.
+          this.save_g(0);
+        }
         
       }
+    },
+
+    save_g(state_value) {
+      //console.log(this.squares.every(element => element === null));
+
+      if(this.game_name_old == this.name_game){
+        alert("Ya existe una partida con ese mismo nombre!! Por favor cambie el nombre.");
+        document.getElementById("inputName").focus();
+        return false;
+      }
+
+      if (this.squares.every(element => element === null) === true) {
+        alert("No hay nada nuevo que guardar.");
+      }else{
+
+        if (this.name_game == '') {
+          alert("Por favor digite el nombre de la partida a guardar.");
+          document.getElementById("inputName").focus();
+          return false;
+        }
+
+        var arr_conf = JSON.stringify(this.squares);
+
+        let post = {
+          name: this.name_game,
+          fields: arr_conf,
+          state: state_value
+        };
+        axios.post(this.create_game, post).then((result) => {
+          console.log(result);
+          if (result.data.data.success === true) {
+            alert("PARTIDA GUARDADA FELICITACIONES!!");
+            this.restart();
+            this.getWonGames();
+            this.getAllGames();
+          }else{
+            alert("ERROR DEL SERVICIO");
+          }
+        }).catch(error => {
+          alert("No esta disponible el servidor.");
+          console.log(error);
+        });
+
+      }
+
+    },
+
+    update_g() {
+
+      var arr_conf = JSON.stringify(this.squares);
+
+      let post = {
+        name: this.name_game,
+        fields: arr_conf,
+        state: 1,
+        id: this.item_select
+      };
+      axios.put(this.update_game, post).then((result) => {
+        //console.log(result);
+        if (result.data.success === true) {
+          alert("PARTIDA ACTUALIZADA Y TERMINADA FELICITACIONES!!");
+          this.restart();
+          this.getWonGames();
+          this.getAllGames();
+        }else{
+          alert("ERROR DEL SERVICIO");
+        }
+      }).catch(error => {
+        alert("No esta disponible el servidor.");
+        console.log(error);
+      });
+
     },
 
     select_reg() {
@@ -144,6 +311,7 @@ export default {
         var obj_var = document.getElementById("item_var"+this.item_select).getAttribute("data-field");
         this.squares = JSON.parse(obj_var);
         this.name_game = document.getElementById("item_var"+this.item_select).getAttribute("data-name");
+        this.game_name_old = document.getElementById("item_var"+this.item_select).getAttribute("data-name");
       }else{
         this.restart();
       }
